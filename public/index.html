@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>我的旅遊地圖</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
+  #map { height: 100vh; width: 100%; }
+
+  .popup-photo { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; }
+  .popup-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; color: #222; }
+  .popup-sub { font-size: 12px; color: #888; margin-bottom: 8px; }
+  .popup-row { font-size: 13px; margin-bottom: 6px; line-height: 1.5; color: #333; }
+  .popup-row strong { display: block; color: #555; margin-bottom: 2px; font-size: 11px; }
+  .popup-stars { color: #e8a33d; font-size: 14px; }
+  .popup-route-tag { display: inline-block; font-size: 11px; color: #fff; padding: 2px 8px; border-radius: 10px; margin-bottom: 6px; }
+  .popup-edit-btn {
+    display: inline-block; margin-top: 6px; padding: 4px 10px; font-size: 12px;
+    background: #2d6cdf; color: #fff; border-radius: 4px; cursor: pointer; border: none;
+  }
+  .leaflet-popup-content { margin: 12px 14px; min-width: 200px; }
+
+  #status-banner {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    background: #fff3cd; border: 1px solid #ffe58f; color: #856404;
+    padding: 8px 16px; border-radius: 6px; font-size: 13px; z-index: 1000; display: none;
+  }
+
+  #auth-box {
+    position: absolute; top: 12px; right: 12px; z-index: 1000;
+    background: #fff; padding: 8px 12px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; max-width: 260px;
+  }
+  #auth-box button { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; white-space: nowrap; }
+  #login-btn { background: #2d6cdf; color: #fff; }
+  #logout-btn { background: #eee; color: #333; }
+  #manage-btn { background: #1e6b3a; color: #fff; display: none; }
+
+  #edit-hint {
+    position: absolute; top: 62px; right: 12px; z-index: 1000;
+    background: #e6f4ea; border: 1px solid #b7e1c1; color: #1e6b3a;
+    padding: 6px 12px; border-radius: 6px; font-size: 12px; display: none; max-width: 220px;
+  }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000;
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal-box { background: #fff; border-radius: 10px; padding: 20px; width: 90%; max-width: 440px; max-height: 85vh; overflow-y: auto; }
+  .modal-box h3 { margin: 0 0 12px; font-size: 17px; }
+  .form-group { margin-bottom: 10px; }
+  .form-group label { display: block; font-size: 12px; color: #555; margin-bottom: 3px; }
+  .form-group input, .form-group textarea, .form-group select {
+    width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;
+  }
+  .form-group textarea { resize: vertical; min-height: 50px; }
+  .form-actions { display: flex; justify-content: space-between; margin-top: 14px; }
+  .btn { padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; }
+  .btn-primary { background: #2d6cdf; color: #fff; }
+  .btn-secondary { background: #eee; color: #333; }
+  .btn-danger { background: #d9534f; color: #fff; }
+
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid #eee; }
+  .tab-btn { flex: 1; padding: 8px; background: none; border: none; cursor: pointer; font-size: 13px; color: #888; border-bottom: 2px solid transparent; }
+  .tab-btn.active { color: #2d6cdf; border-bottom: 2px solid #2d6cdf; font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .list-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+  .small-btn { padding: 3px 8px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; background: #eee; }
+  .small-btn.danger { background: #f8d7da; color: #a33; }
+  .inline-form { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .inline-form input[type=text] { flex: 1; min-width: 120px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
+  .inline-form input[type=color] { width: 36px; height: 32px; border: none; padding: 0; }
+</style>
+</head>
+<body>
+
+<div id="status-banner"></div>
+<div id="auth-box">
+  <span id="auth-status">尚未登入</span>
+  <button id="login-btn">用 Google 登入</button>
+  <button id="logout-btn" style="display:none;">登出</button>
+  <button id="manage-btn">管理</button>
+</div>
+<div id="edit-hint">你有編輯權限：點地圖空白處新增地點，點標記可編輯</div>
+<div id="map"></div>
+
+<!-- 新增/編輯地點 -->
+<div class="modal-overlay" id="location-modal-overlay">
+  <div class="modal-box">
+    <h3 id="modal-title">新增地點</h3>
+    <form id="edit-form">
+      <div class="form-group"><label>地點名稱 *</label><input type="text" id="f-name" required></div>
+      <div class="form-group"><label>分類 *</label><input type="text" id="f-category" placeholder="景點／美食／住宿" required></div>
+      <div class="form-group"><label>國家 *</label><input type="text" id="f-country" required></div>
+      <div class="form-group"><label>城市 *</label><input type="text" id="f-city" required></div>
+      <div class="form-group"><label>照片網址（選填，貼上 Google 相簿公開連結）</label><input type="text" id="f-photoUrl" placeholder="https://..."></div>
+      <div class="form-group"><label>推薦指數（1-5，選填）</label><input type="number" id="f-rating" min="1" max="5" step="1"></div>
+      <div class="form-group"><label>心得（選填）</label><textarea id="f-description"></textarea></div>
+      <div class="form-group"><label>優惠資訊（選填）</label><input type="text" id="f-discount"></div>
+      <div class="form-group"><label>價格（選填）</label><input type="text" id="f-price"></div>
+      <div class="form-group"><label>開放時間（選填）</label><input type="text" id="f-hours"></div>
+      <div class="form-group"><label>建議停留時間（選填）</label><input type="text" id="f-bestTime"></div>
+      <div class="form-group"><label>怎麼去（選填）</label><input type="text" id="f-transport"></div>
+      <div class="form-group"><label>官方網站（選填）</label><input type="text" id="f-website" placeholder="https://..."></div>
+      <div class="form-group">
+        <label>所屬路線（選填）</label>
+        <select id="f-routeId"><option value="">（不屬於任何路線）</option></select>
+      </div>
+      <div class="form-group"><label>站序（選填，數字越小越前面）</label><input type="number" id="f-order" step="1"></div>
+      <div class="form-actions">
+        <div><button type="button" id="delete-btn" class="btn btn-danger" style="display:none;">刪除</button></div>
+        <div>
+          <button type="button" id="cancel-btn" class="btn btn-secondary">取消</button>
+          <button type="submit" class="btn btn-primary">儲存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 管理面板：協作者 / 路線 -->
+<div class="modal-overlay" id="manage-modal-overlay">
+  <div class="modal-box">
+    <h3>管理面板</h3>
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="editors">協作者</button>
+      <button class="tab-btn" data-tab="routes">路線</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-editors">
+      <div id="editors-list"></div>
+      <div class="inline-form" id="owner-only-editor-form">
+        <input type="text" id="new-editor-email" placeholder="輸入朋友的 Google 帳號 Email">
+        <button type="button" class="btn btn-primary" id="add-editor-btn">新增</button>
+      </div>
+      <p id="not-owner-hint" style="font-size:12px;color:#999;display:none;">只有網站建立者可以新增或移除協作者</p>
+    </div>
+
+    <div class="tab-panel" id="tab-routes">
+      <div id="routes-list"></div>
+      <div class="inline-form">
+        <input type="text" id="new-route-name" placeholder="路線名稱，例如：京都兩日遊">
+        <input type="color" id="new-route-color" value="#2d6cdf">
+        <button type="button" class="btn btn-primary" id="add-route-btn">新增</button>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:16px;">
+      <div></div>
+      <button type="button" class="btn btn-secondary" id="close-manage-btn">關閉</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+
+<script>
+// ============================================================
+// 換成你自己的 Firebase 設定值
+// ============================================================
+const firebaseConfig = {
+  apiKey: "填入你的 apiKey",
+  authDomain: "johnny-journey.firebaseapp.com",
+  projectId: "johnny-journey",
+  storageBucket: "johnny-journey.appspot.com",
+  messagingSenderId: "填入你的 messagingSenderId",
+  appId: "填入你的 appId"
+};
+// ============================================================
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+
+const map = L.map('map').setView([25.0, 121.5], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const OPTIONAL_TEXT_FIELDS = [
+  { key: 'description', label: '心得' },
+  { key: 'discount',    label: '優惠資訊' },
+  { key: 'price',       label: '價格' },
+  { key: 'hours',       label: '開放時間' },
+  { key: 'bestTime',    label: '建議停留時間' },
+  { key: 'transport',   label: '怎麼去' },
+  { key: 'website',     label: '官方網站', isLink: true },
+];
+
+function escapeHTML(str) {
+  return String(str).replace(/[&<>"']/g, s => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[s]));
+}
+
+function showBanner(message) {
+  const banner = document.getElementById('status-banner');
+  banner.textContent = message;
+  banner.style.display = 'block';
+  setTimeout(() => banner.style.display = 'none', 4000);
+}
+
+// ============================================================
+// 資料快取
+// ============================================================
+let locationsCache = {};  // id -> data
+let routesCache = {};     // id -> data
+const markerById = {};
+let routeLines = [];
+
+function buildPopupHTML(docId, data) {
+  let html = '';
+  if (data.photoUrl) {
+    html += `<img class="popup-photo" src="${escapeHTML(data.photoUrl)}" onerror="this.style.display='none'">`;
+  }
+  if (data.routeId && routesCache[data.routeId]) {
+    const route = routesCache[data.routeId];
+    html += `<span class="popup-route-tag" style="background:${escapeHTML(route.color || '#888')}">${escapeHTML(route.name)}</span>`;
+  }
+  html += `<div class="popup-title">${escapeHTML(data.name || '未命名地點')}</div>`;
+  const subParts = [data.category, data.city, data.country].filter(Boolean);
+  if (subParts.length) html += `<div class="popup-sub">${escapeHTML(subParts.join(' · '))}</div>`;
+  if (typeof data.rating === 'number') {
+    const r = Math.round(data.rating);
+    html += `<div class="popup-row popup-stars">${'★'.repeat(r)}${'☆'.repeat(Math.max(0, 5 - r))}</div>`;
+  }
+  OPTIONAL_TEXT_FIELDS.forEach(field => {
+    const value = data[field.key];
+    if (value === undefined || value === null || value === '') return;
+    if (field.isLink) {
+      html += `<div class="popup-row"><strong>${field.label}</strong><a href="${escapeHTML(value)}" target="_blank" rel="noopener">${escapeHTML(value)}</a></div>`;
+    } else {
+      html += `<div class="popup-row"><strong>${field.label}</strong>${escapeHTML(String(value))}</div>`;
+    }
+  });
+  if (isEditor) {
+    html += `<button class="popup-edit-btn" onclick="openEditModal('${docId}')">編輯</button>`;
+  }
+  return html;
+}
+
+function renderMarker(docId, data) {
+  if (typeof data.lat !== 'number' || typeof data.lng !== 'number') return;
+  if (markerById[docId]) map.removeLayer(markerById[docId]);
+  const marker = L.marker([data.lat, data.lng]).addTo(map);
+  marker.bindPopup(buildPopupHTML(docId, data));
+  markerById[docId] = marker;
+}
+
+function renderRouteLines() {
+  routeLines.forEach(line => map.removeLayer(line));
+  routeLines = [];
+
+  const byRoute = {};
+  Object.entries(locationsCache).forEach(([id, data]) => {
+    if (!data.routeId || typeof data.lat !== 'number' || typeof data.lng !== 'number') return;
+    if (!byRoute[data.routeId]) byRoute[data.routeId] = [];
+    byRoute[data.routeId].push(data);
+  });
+
+  Object.entries(byRoute).forEach(([routeId, points]) => {
+    if (points.length < 2) return;
+    points.sort((a, b) => (a.order || 0) - (b.order || 0));
+    const latlngs = points.map(p => [p.lat, p.lng]);
+    const color = (routesCache[routeId] && routesCache[routeId].color) || '#2d6cdf';
+    const line = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.75 }).addTo(map);
+    routeLines.push(line);
+  });
+}
+
+function refreshRouteSelectOptions() {
+  const select = document.getElementById('f-routeId');
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">（不屬於任何路線）</option>';
+  Object.entries(routesCache).forEach(([id, data]) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = data.name;
+    select.appendChild(opt);
+  });
+  select.value = currentValue;
+}
+
+function loadAll() {
+  Promise.all([
+    db.collection('routes').get(),
+    db.collection('locations').get()
+  ]).then(([routeSnap, locSnap]) => {
+    routesCache = {};
+    routeSnap.forEach(doc => routesCache[doc.id] = doc.data());
+
+    locationsCache = {};
+    const bounds = [];
+    locSnap.forEach(doc => {
+      const data = doc.data();
+      locationsCache[doc.id] = data;
+      renderMarker(doc.id, data);
+      if (typeof data.lat === 'number' && typeof data.lng === 'number') bounds.push([data.lat, data.lng]);
+    });
+
+    renderRouteLines();
+    refreshRouteSelectOptions();
+    renderManagePanels();
+
+    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+    if (locSnap.empty) showBanner('目前還沒有任何地點資料');
+  }).catch(err => {
+    console.error(err);
+    showBanner('讀取資料失敗，請按 F12 查看主控台');
+  });
+}
+
+loadAll();
+
+// ============================================================
+// 登入 / 權限
+// ============================================================
+let currentUser = null;
+let isEditor = false;
+let isOwner = false;
+let pendingLatLng = null;
+let editingDocId = null;
+
+document.getElementById('login-btn').addEventListener('click', () => {
+  auth.signInWithPopup(googleProvider).catch(err => {
+    console.error(err);
+    showBanner('登入失敗：' + err.message);
+  });
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => auth.signOut());
+
+auth.onAuthStateChanged(async (user) => {
+  currentUser = user;
+  isEditor = false;
+  isOwner = false;
+
+  if (user) {
+    try {
+      const doc = await db.collection('editors').doc(user.email).get();
+      if (doc.exists) {
+        isEditor = true;
+        isOwner = doc.data().role === 'owner';
+      }
+    } catch (e) {
+      isEditor = false;
+    }
+    document.getElementById('auth-status').textContent = user.email;
+    document.getElementById('login-btn').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'inline-block';
+  } else {
+    document.getElementById('auth-status').textContent = '尚未登入';
+    document.getElementById('login-btn').style.display = 'inline-block';
+    document.getElementById('logout-btn').style.display = 'none';
+  }
+
+  document.getElementById('edit-hint').style.display = isEditor ? 'block' : 'none';
+  document.getElementById('manage-btn').style.display = isEditor ? 'inline-block' : 'none';
+  document.getElementById('owner-only-editor-form').style.display = isOwner ? 'flex' : 'none';
+  document.getElementById('not-owner-hint').style.display = isOwner ? 'none' : 'block';
+
+  loadAll();
+});
+
+map.on('click', (e) => {
+  if (!isEditor) return;
+  pendingLatLng = e.latlng;
+  editingDocId = null;
+  openModalForCreate();
+});
+
+// ============================================================
+// 新增／編輯地點視窗
+// ============================================================
+const locOverlay = document.getElementById('location-modal-overlay');
+const form = document.getElementById('edit-form');
+
+function openModalForCreate() {
+  document.getElementById('modal-title').textContent = '新增地點';
+  form.reset();
+  document.getElementById('delete-btn').style.display = 'none';
+  refreshRouteSelectOptions();
+  locOverlay.style.display = 'flex';
+}
+
+window.openEditModal = function(docId) {
+  const data = locationsCache[docId];
+  if (!data) return;
+  editingDocId = docId;
+  pendingLatLng = null;
+  document.getElementById('modal-title').textContent = '編輯地點';
+  document.getElementById('f-name').value = data.name || '';
+  document.getElementById('f-category').value = data.category || '';
+  document.getElementById('f-country').value = data.country || '';
+  document.getElementById('f-city').value = data.city || '';
+  document.getElementById('f-photoUrl').value = data.photoUrl || '';
+  document.getElementById('f-rating').value = data.rating || '';
+  document.getElementById('f-description').value = data.description || '';
+  document.getElementById('f-discount').value = data.discount || '';
+  document.getElementById('f-price').value = data.price || '';
+  document.getElementById('f-hours').value = data.hours || '';
+  document.getElementById('f-bestTime').value = data.bestTime || '';
+  document.getElementById('f-transport').value = data.transport || '';
+  document.getElementById('f-website').value = data.website || '';
+  document.getElementById('f-order').value = data.order != null ? data.order : '';
+  refreshRouteSelectOptions();
+  document.getElementById('f-routeId').value = data.routeId || '';
+  document.getElementById('delete-btn').style.display = 'inline-block';
+  locOverlay.style.display = 'flex';
+};
+
+document.getElementById('cancel-btn').addEventListener('click', () => locOverlay.style.display = 'none');
+
+document.getElementById('delete-btn').addEventListener('click', () => {
+  if (!editingDocId) return;
+  if (!confirm('確定要刪除這個地點嗎？')) return;
+  db.collection('locations').doc(editingDocId).delete().then(() => {
+    locOverlay.style.display = 'none';
+    showBanner('已刪除');
+    loadAll();
+  }).catch(err => showBanner('刪除失敗：' + err.message));
+});
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+
+  const payload = {
+    name: document.getElementById('f-name').value.trim(),
+    category: document.getElementById('f-category').value.trim(),
+    country: document.getElementById('f-country').value.trim(),
+    city: document.getElementById('f-city').value.trim(),
+  };
+
+  const optionalTextFields = ['photoUrl', 'description', 'discount', 'price', 'hours', 'bestTime', 'transport', 'website'];
+  optionalTextFields.forEach(key => {
+    const value = document.getElementById('f-' + key).value.trim();
+    if (value) payload[key] = value;
+  });
+
+  const ratingValue = document.getElementById('f-rating').value;
+  if (ratingValue) payload.rating = Number(ratingValue);
+
+  const routeIdValue = document.getElementById('f-routeId').value;
+  if (routeIdValue) payload.routeId = routeIdValue;
+
+  const orderValue = document.getElementById('f-order').value;
+  if (orderValue !== '') payload.order = Number(orderValue);
+
+  payload.createdBy = currentUser.email;
+  payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+  if (editingDocId) {
+    db.collection('locations').doc(editingDocId).set(payload, { merge: true }).then(() => {
+      locOverlay.style.display = 'none';
+      showBanner('已更新');
+      loadAll();
+    }).catch(err => showBanner('儲存失敗：' + err.message));
+  } else {
+    payload.lat = pendingLatLng.lat;
+    payload.lng = pendingLatLng.lng;
+    payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+    db.collection('locations').add(payload).then(() => {
+      locOverlay.style.display = 'none';
+      showBanner('已新增');
+      loadAll();
+    }).catch(err => showBanner('新增失敗：' + err.message));
+  }
+});
+
+// ============================================================
+// 管理面板：分頁切換
+// ============================================================
+const manageOverlay = document.getElementById('manage-modal-overlay');
+document.getElementById('manage-btn').addEventListener('click', () => {
+  manageOverlay.style.display = 'flex';
+  renderManagePanels();
+});
+document.getElementById('close-manage-btn').addEventListener('click', () => manageOverlay.style.display = 'none');
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ============================================================
+// 協作者管理
+// ============================================================
+function renderManagePanels() {
+  const editorsListEl = document.getElementById('editors-list');
+  editorsListEl.innerHTML = '';
+  if (isEditor) {
+    db.collection('editors').get().then(snap => {
+      editorsListEl.innerHTML = '';
+      snap.forEach(doc => {
+        const data = doc.data();
+        const row = document.createElement('div');
+        row.className = 'list-item';
+        const roleLabel = data.role === 'owner' ? '（建立者）' : '';
+        row.innerHTML = `<span>${escapeHTML(doc.id)} ${roleLabel}</span>`;
+        if (isOwner && data.role !== 'owner') {
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'small-btn danger';
+          removeBtn.textContent = '移除';
+          removeBtn.onclick = () => {
+            if (!confirm('確定要移除這位協作者嗎？')) return;
+            db.collection('editors').doc(doc.id).delete().then(() => {
+              showBanner('已移除協作者');
+              renderManagePanels();
+            });
+          };
+          row.appendChild(removeBtn);
+        }
+        editorsListEl.appendChild(row);
+      });
+    }).catch(() => { editorsListEl.textContent = '無法讀取協作者名單'; });
+  }
+
+  const routesListEl = document.getElementById('routes-list');
+  routesListEl.innerHTML = '';
+  Object.entries(routesCache).forEach(([id, data]) => {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.innerHTML = `<span><span class="color-dot" style="background:${escapeHTML(data.color || '#888')}"></span>${escapeHTML(data.name)}</span>`;
+    if (isEditor) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'small-btn danger';
+      removeBtn.textContent = '刪除';
+      removeBtn.onclick = () => {
+        if (!confirm('刪除路線不會刪除已加入的地點，但地點會失去路線連結，確定刪除嗎？')) return;
+        db.collection('routes').doc(id).delete().then(() => {
+          showBanner('已刪除路線');
+          loadAll();
+        });
+      };
+      row.appendChild(removeBtn);
+    }
+    routesListEl.appendChild(row);
+  });
+}
+
+document.getElementById('add-editor-btn').addEventListener('click', () => {
+  const emailInput = document.getElementById('new-editor-email');
+  const email = emailInput.value.trim();
+  if (!email) return;
+  db.collection('editors').doc(email).set({
+    role: 'editor',
+    addedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(() => {
+    emailInput.value = '';
+    showBanner('已新增協作者，請請對方用該 Google 帳號登入網站');
+    renderManagePanels();
+  }).catch(err => showBanner('新增失敗：' + err.message));
+});
+
+document.getElementById('add-route-btn').addEventListener('click', () => {
+  const nameInput = document.getElementById('new-route-name');
+  const colorInput = document.getElementById('new-route-color');
+  const name = nameInput.value.trim();
+  if (!name) return;
+  db.collection('routes').add({
+    name: name,
+    color: colorInput.value,
+    createdBy: currentUser.email,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(() => {
+    nameInput.value = '';
+    showBanner('已新增路線');
+    loadAll();
+  }).catch(err => showBanner('新增失敗：' + err.message));
+});
+</script>
+</body>
+</html>
