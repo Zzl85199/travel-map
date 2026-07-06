@@ -65,5 +65,9 @@ node_modules/
 # dotenv environment variables file
 .env
 
+# 網站設定值（Firebase / Cloudinary），不推上 GitHub，
+# 参考 public/config.example.js 在其他環境重新建立
+public/config.js
+
 # dataconnect generated files
 .dataconnect

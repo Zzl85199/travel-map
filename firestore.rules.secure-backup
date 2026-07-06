@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    function isEditorUser() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/editors/$(request.auth.token.email));
+    }
+
+    function isOwnerUser() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/editors/$(request.auth.token.email)).data.role == 'owner';
+    }
+
+    // 地點：任何人（包含未登入）可讀，只有名單內的協作者可寫
+    match /locations/{locId} {
+      allow read: if true;
+      allow create, update, delete: if isEditorUser();
+    }
+
+    // 路線：任何人可讀，只有協作者可寫
+    match /routes/{routeId} {
+      allow read: if true;
+      allow create, update, delete: if isEditorUser();
+    }
+
+    // 協作者名單：
+    // - 已登入者可讀（前端需要讀取自己的文件來判斷是否有編輯權限）
+    // - 只有 owner 可以新增/刪除協作者
+    // 注意：第一個 owner 文件需要你自己到 Firebase Console 手動建立，
+    // 例如新增 editors/你的Email文件，內容 { role: "owner" }
+    match /editors/{email} {
+      allow read: if isSignedIn();
+      allow write: if isOwnerUser();
+    }
+  }
+}
