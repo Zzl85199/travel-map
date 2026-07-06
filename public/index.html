@@ -12,8 +12,10 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <style>
   html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; overflow: hidden; }
-  #map { height: 100vh; width: 100%; display: none; }
-  #globe-view { height: 100vh; width: 100%; background: #000714; }
+  #map { height: 100vh; width: 100%; display: none; opacity: 0; transition: opacity 0.5s ease; background: #dde3ea; }
+  #map.visible { opacity: 1; }
+  #globe-view { height: 100vh; width: 100%; background: linear-gradient(180deg, #030512 0%, #0a1030 100%); opacity: 0; transition: opacity 0.5s ease; }
+  #globe-view.visible { opacity: 1; }
 
   .popup-photo { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; }
   .popup-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; color: #222; }
@@ -119,7 +121,9 @@
     #edit-hint { max-width: 170px; font-size: 11px; top: 58px; }
     .modal-box { padding: 14px; width: 94%; }
     #globe-hint { font-size: 11px; padding: 5px 10px; }
-    #search-box { max-width: 160px; }
+    #search-box { max-width: 160px; top: 56px; }
+    #page-title { font-size: 12px; padding: 6px 12px; }
+    #add-location-fab { width: 50px; height: 50px; font-size: 24px; bottom: 20px; right: 16px; }
   }
 
   #loading-overlay {
@@ -145,16 +149,97 @@
     color: #cfd8ff; font-size: 13px; text-align: center; max-width: 260px; display: none; pointer-events: none;
   }
 
-  #search-box {
-    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000;
-    width: 220px; max-width: 60vw; padding: 8px 12px; border-radius: 20px; border: 1px solid #ddd;
-    font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); display: none; background: #fff;
+  #page-title {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 999;
+    background: rgba(255,255,255,0.95); color: #1c2340; padding: 8px 18px; border-radius: 20px;
+    font-size: 15px; font-weight: 700; box-shadow: 0 3px 12px rgba(0,0,0,0.18); letter-spacing: 0.5px;
+    display: flex; align-items: center; gap: 6px; pointer-events: none;
   }
 
-  .leaflet-cluster-badge {
-    background: #2d6cdf; color: #fff; border-radius: 50%; display: flex; align-items: center;
-    justify-content: center; font-size: 12px; font-weight: 600; width: 100%; height: 100%;
+  #search-box {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%); z-index: 1000;
+    width: 220px; max-width: 60vw; padding: 8px 14px; border-radius: 20px; border: 1px solid #ddd;
+    font-size: 13px; box-shadow: 0 2px 10px rgba(0,0,0,0.12); display: none; background: #fff;
+    transition: box-shadow 0.2s, width 0.2s;
   }
+  #search-box:focus { outline: none; box-shadow: 0 4px 16px rgba(45,108,223,0.3); width: 260px; }
+
+  .custom-cluster-icon {
+    background: #2d6cdf; color: #fff; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 13px; font-weight: 700; width: 100%; height: 100%;
+    box-shadow: 0 0 0 6px rgba(45,108,223,0.25); border: 2px solid #fff;
+  }
+
+  /* 新增地點按鈕（FAB） */
+  #add-location-fab {
+    position: absolute; bottom: 28px; right: 20px; z-index: 1000;
+    width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(135deg, #2d6cdf, #4f8cff); color: #fff; font-size: 28px; line-height: 1;
+    box-shadow: 0 4px 14px rgba(45,108,223,0.45); display: none; align-items: center; justify-content: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  #add-location-fab:hover { transform: scale(1.08) rotate(90deg); box-shadow: 0 6px 20px rgba(45,108,223,0.55); }
+  #add-location-fab:active { transform: scale(0.95) rotate(90deg); }
+  #add-location-fab::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(45,108,223,0.5);
+    animation: fabPulse 2.2s ease-out infinite;
+  }
+  @keyframes fabPulse {
+    0% { transform: scale(0.9); opacity: 0.8; }
+    70% { transform: scale(1.35); opacity: 0; }
+    100% { opacity: 0; }
+  }
+
+  /* 自訂地點圖釘（取代預設藍色水滴） */
+  .pin-icon {
+    width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+    transform: translateY(-6px); animation: pinDrop 0.45s cubic-bezier(.34,1.56,.64,1);
+  }
+  .pin-icon svg { width: 100%; height: 100%; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.35)); }
+  .pin-icon:hover svg { transform: scale(1.15); }
+  .pin-icon svg { transition: transform 0.15s ease; }
+  @keyframes pinDrop {
+    0% { transform: translateY(-60px) scale(0.5); opacity: 0; }
+    70% { transform: translateY(2px) scale(1.08); opacity: 1; }
+    100% { transform: translateY(-6px) scale(1); }
+  }
+
+  .temp-marker-icon {
+    width: 26px; height: 26px; border-radius: 50%; background: #ffb020; border: 3px solid #fff;
+    box-shadow: 0 0 0 6px rgba(255,176,32,0.35), 0 2px 6px rgba(0,0,0,0.4);
+    animation: tempPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes tempPulse {
+    0%, 100% { box-shadow: 0 0 0 6px rgba(255,176,32,0.35), 0 2px 6px rgba(0,0,0,0.4); }
+    50% { box-shadow: 0 0 0 10px rgba(255,176,32,0.15), 0 2px 6px rgba(0,0,0,0.4); }
+  }
+
+  .route-flow { animation: dashFlow 1.4s linear infinite; }
+  @keyframes dashFlow { to { stroke-dashoffset: -120; } }
+
+  /* 3D 地球上的城市光點（改用真的 DOM 元素，更好點擊） */
+  .city-pin-wrap { position: relative; cursor: pointer; display: flex; align-items: center; }
+  .city-pin-dot {
+    width: 20px; height: 20px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffdca0, #ff6b4a 60%, #d8461f);
+    box-shadow: 0 0 0 6px rgba(255,107,74,0.3), 0 2px 6px rgba(0,0,0,0.5);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .city-pin-wrap:hover .city-pin-dot { transform: scale(1.4); box-shadow: 0 0 0 9px rgba(255,107,74,0.4), 0 2px 8px rgba(0,0,0,0.6); }
+  .city-pin-dot::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid rgba(255,107,74,0.55);
+    animation: cityPinPulse 2.4s ease-out infinite;
+  }
+  @keyframes cityPinPulse {
+    0% { transform: scale(0.7); opacity: 0.9; }
+    70% { transform: scale(2.1); opacity: 0; }
+    100% { opacity: 0; }
+  }
+  .city-pin-label {
+    position: absolute; left: 26px; top: 50%; transform: translateY(-50%);
+    background: rgba(10,14,30,0.85); color: #fff; font-size: 12px; padding: 3px 8px; border-radius: 10px;
+    white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .city-pin-wrap:hover .city-pin-label { opacity: 1; }
 </style>
 </head>
 <body>
@@ -171,10 +256,11 @@
   <button id="logout-btn" style="display:none;">登出</button>
   <button id="manage-btn">管理</button>
 </div>
+<div id="page-title">🌍 我的旅遊地圖</div>
 <div id="edit-hint">你有編輯權限：點地圖空白處新增地點，點標記可編輯</div>
 <button id="back-to-globe-btn">🌍 返回地球</button>
 <input type="text" id="search-box" placeholder="搜尋地點、城市、分類...">
-
+<button id="add-location-fab" title="在地圖中心新增地點">＋</button>
 <div id="globe-view"></div>
 <div id="globe-stats"></div>
 <div id="globe-empty-state">目前還沒有任何地點資料<br>登入後點地圖空白處即可新增第一筆</div>
@@ -292,12 +378,19 @@ const auth = firebase.auth();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
 
 const map = L.map('map', { zoomControl: true }).setView([25.0, 121.5], 4);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
   maxZoom: 19,
-  attribution: '&copy; OpenStreetMap contributors'
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
 }).addTo(map);
+map.zoomControl.setPosition('bottomright');
 
-const markerCluster = L.markerClusterGroup({ maxClusterRadius: 50 });
+const markerCluster = L.markerClusterGroup({
+  maxClusterRadius: 50,
+  iconCreateFunction: (cluster) => L.divIcon({
+    html: `<div class="custom-cluster-icon">${cluster.getChildCount()}</div>`,
+    className: '', iconSize: [40, 40]
+  })
+});
 map.addLayer(markerCluster);
 
 const OPTIONAL_TEXT_FIELDS = [
@@ -362,10 +455,36 @@ function buildPopupHTML(docId, data) {
   return html;
 }
 
+const CATEGORY_COLORS = {
+  '景點': '#2d6cdf', '美食': '#e8703a', '住宿': '#7a4fd1',
+  '交通': '#3aa66d', '購物': '#d1499a', '其他': '#888888'
+};
+
+function colorForCategory(category) {
+  if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category];
+  // 沒有對到預設分類時，用文字算出一個穩定的顏色
+  let hash = 0;
+  for (let i = 0; i < (category || '').length; i++) hash = (hash * 31 + category.charCodeAt(i)) % 360;
+  return `hsl(${hash}, 65%, 50%)`;
+}
+
+function buildPinIcon(category) {
+  const color = colorForCategory(category);
+  const svg = `
+    <svg viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20c0-6.6-5.4-12-12-12z" fill="${color}"/>
+      <circle cx="12" cy="12" r="5" fill="#fff"/>
+    </svg>`;
+  return L.divIcon({
+    html: `<div class="pin-icon">${svg}</div>`,
+    className: '', iconSize: [30, 30], iconAnchor: [15, 28], popupAnchor: [0, -26]
+  });
+}
+
 function renderMarker(docId, data) {
   if (typeof data.lat !== 'number' || typeof data.lng !== 'number') return;
   if (markerById[docId]) markerCluster.removeLayer(markerById[docId]);
-  const marker = L.marker([data.lat, data.lng]);
+  const marker = L.marker([data.lat, data.lng], { icon: buildPinIcon(data.category) });
   marker.bindPopup(buildPopupHTML(docId, data));
   marker._locId = docId;
   markerCluster.addLayer(marker);
@@ -388,7 +507,8 @@ function renderRouteLines() {
     points.sort((a, b) => (a.order || 0) - (b.order || 0));
     const latlngs = points.map(p => [p.lat, p.lng]);
     const color = (routesCache[routeId] && routesCache[routeId].color) || '#2d6cdf';
-    const line = L.polyline(latlngs, { color: color, weight: 3, opacity: 0.75 }).addTo(map);
+    const line = L.polyline(latlngs, { color: color, weight: 4, opacity: 0.85, dashArray: '10, 8' }).addTo(map);
+    if (line._path) line._path.classList.add('route-flow');
     routeLines.push(line);
   });
 }
@@ -507,6 +627,7 @@ auth.onAuthStateChanged(async (user) => {
   }
 
   document.getElementById('edit-hint').style.display = (isEditor && currentView === 'city') ? 'block' : 'none';
+  document.getElementById('add-location-fab').style.display = (isEditor && currentView === 'city') ? 'flex' : 'none';
   document.getElementById('manage-btn').style.display = isEditor ? 'inline-block' : 'none';
   document.getElementById('owner-only-editor-form').style.display = isOwner ? 'flex' : 'none';
   document.getElementById('not-owner-hint').style.display = isOwner ? 'none' : 'block';
@@ -514,10 +635,34 @@ auth.onAuthStateChanged(async (user) => {
   loadAll();
 });
 
+let tempMarker = null;
+
+function showTempMarker(latlng) {
+  removeTempMarker();
+  tempMarker = L.marker(latlng, {
+    draggable: true,
+    icon: L.divIcon({ html: '<div class="temp-marker-icon"></div>', className: '', iconSize: [26, 26], iconAnchor: [13, 13] })
+  }).addTo(map);
+  tempMarker.on('dragend', () => { pendingLatLng = tempMarker.getLatLng(); });
+}
+
+function removeTempMarker() {
+  if (tempMarker) { map.removeLayer(tempMarker); tempMarker = null; }
+}
+
 map.on('click', (e) => {
   if (!isEditor) return;
   pendingLatLng = e.latlng;
   editingDocId = null;
+  showTempMarker(e.latlng);
+  openModalForCreate();
+});
+
+document.getElementById('add-location-fab').addEventListener('click', () => {
+  if (!isEditor) return;
+  pendingLatLng = map.getCenter();
+  editingDocId = null;
+  showTempMarker(pendingLatLng);
   openModalForCreate();
 });
 
@@ -587,7 +732,10 @@ window.openEditModal = function(docId) {
   locOverlay.style.display = 'flex';
 };
 
-document.getElementById('cancel-btn').addEventListener('click', () => locOverlay.style.display = 'none');
+document.getElementById('cancel-btn').addEventListener('click', () => {
+  locOverlay.style.display = 'none';
+  removeTempMarker();
+});
 
 document.getElementById('delete-btn').addEventListener('click', () => {
   if (!editingDocId) return;
@@ -685,6 +833,7 @@ form.addEventListener('submit', (e) => {
     if (editingDocId) {
       return db.collection('locations').doc(editingDocId).set(payload, { merge: true }).then(() => {
         locOverlay.style.display = 'none';
+        removeTempMarker();
         showBanner('已更新');
         loadAll();
       });
@@ -694,6 +843,7 @@ form.addEventListener('submit', (e) => {
       payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
       return db.collection('locations').add(payload).then(() => {
         locOverlay.style.display = 'none';
+        removeTempMarker();
         showBanner('已新增');
         loadAll();
       });
@@ -906,11 +1056,11 @@ try {
     .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
     .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
     .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
-    .pointAltitude(0.012)
-    .pointRadius(0.45)
-    .pointColor(() => '#ff6b4a')
-    .pointLabel(d => `<div style="background:#fff;color:#222;padding:4px 8px;border-radius:4px;font-size:12px;">${escapeHTML(d.city)}（${d.count} 個地點）</div>`)
-    .onPointClick(flyToCity)
+    .htmlElementsData([])
+    .htmlLat('lat')
+    .htmlLng('lng')
+    .htmlAltitude(0.015)
+    .htmlElement(buildCityPinElement)
     .arcColor('color')
     .arcDashLength(0.4)
     .arcDashGap(0.2)
@@ -925,6 +1075,7 @@ try {
   world.controls().autoRotate = true;
   world.controls().autoRotateSpeed = 0.4;
   globeAvailable = true;
+  requestAnimationFrame(() => requestAnimationFrame(() => globeEl.classList.add('visible')));
 
   let resizeTimer = null;
   window.addEventListener('resize', () => {
@@ -937,6 +1088,20 @@ try {
 } catch (err) {
   console.error('3D 地球初始化失敗（可能是裝置不支援 WebGL）：', err);
   globeAvailable = false;
+}
+
+function buildCityPinElement(d) {
+  const wrap = document.createElement('div');
+  wrap.className = 'city-pin-wrap';
+  wrap.innerHTML = `
+    <div class="city-pin-dot"></div>
+    <div class="city-pin-label">${escapeHTML(d.city)}（${d.count} 個地點）</div>
+  `;
+  wrap.addEventListener('click', (e) => {
+    e.stopPropagation();
+    flyToCity(d);
+  });
+  return wrap;
 }
 
 function cityAggregates() {
@@ -992,7 +1157,7 @@ function updateGlobeStats() {
 function updateGlobeData() {
   if (!globeAvailable) return;
   lastCityAggregates = cityAggregates();
-  world.pointsData(lastCityAggregates);
+  world.htmlElementsData(lastCityAggregates);
   if (showArcs) world.arcsData(routeArcsData());
   updateGlobeStats();
 
@@ -1006,17 +1171,24 @@ function flyToCity(pt) {
   setTimeout(() => switchToCityView(pt), 1650);
 }
 
+function crossFadeViews(hideEl, showEl, showDisplay) {
+  hideEl.classList.remove('visible');
+  setTimeout(() => { hideEl.style.display = 'none'; }, 500);
+  showEl.style.display = showDisplay;
+  requestAnimationFrame(() => requestAnimationFrame(() => showEl.classList.add('visible')));
+}
+
 function switchToCityView(pt) {
   currentView = 'city';
-  globeEl.style.display = 'none';
+  crossFadeViews(globeEl, document.getElementById('map'), 'block');
   document.getElementById('globe-hint').style.display = 'none';
   document.getElementById('globe-toggle-arcs').style.display = 'none';
   document.getElementById('globe-stats').style.display = 'none';
   document.getElementById('globe-empty-state').style.display = 'none';
-  document.getElementById('map').style.display = 'block';
   document.getElementById('back-to-globe-btn').style.display = 'inline-block';
   document.getElementById('search-box').style.display = 'block';
   document.getElementById('edit-hint').style.display = isEditor ? 'block' : 'none';
+  document.getElementById('add-location-fab').style.display = isEditor ? 'flex' : 'none';
   if (world && world.pauseAnimation) world.pauseAnimation();
 
   setTimeout(() => {
@@ -1034,11 +1206,11 @@ function switchToCityView(pt) {
 
 function switchToGlobeView() {
   currentView = 'globe';
-  document.getElementById('map').style.display = 'none';
+  crossFadeViews(document.getElementById('map'), globeEl, 'block');
   document.getElementById('back-to-globe-btn').style.display = 'none';
   document.getElementById('search-box').style.display = 'none';
   document.getElementById('edit-hint').style.display = 'none';
-  globeEl.style.display = 'block';
+  document.getElementById('add-location-fab').style.display = 'none';
   document.getElementById('globe-hint').style.display = 'block';
   document.getElementById('globe-toggle-arcs').style.display = 'inline-block';
   sizeGlobeToContainer();
