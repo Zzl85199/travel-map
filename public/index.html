@@ -3,8 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <title>我的旅遊地圖</title>
+<meta name="description" content="用互動地球與地圖記錄旅遊足跡、地點心得與行程路線">
+<meta name="theme-color" content="#0b1030">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌍</text></svg>">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <style>
   html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; overflow: hidden; }
   #map { height: 100vh; width: 100%; display: none; }
@@ -114,10 +119,50 @@
     #edit-hint { max-width: 170px; font-size: 11px; top: 58px; }
     .modal-box { padding: 14px; width: 94%; }
     #globe-hint { font-size: 11px; padding: 5px 10px; }
+    #search-box { max-width: 160px; }
+  }
+
+  #loading-overlay {
+    position: fixed; inset: 0; background: #05081a; z-index: 3000;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #cfd8ff; font-size: 13px; gap: 14px;
+  }
+  #loading-spinner {
+    width: 36px; height: 36px; border: 3px solid rgba(255,255,255,0.2);
+    border-top-color: #6a9bff; border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #globe-stats {
+    position: absolute; top: 12px; left: 12px; z-index: 1000;
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+    color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 12px; line-height: 1.6; display: none;
+  }
+  #globe-stats b { font-size: 14px; }
+
+  #globe-empty-state {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 999;
+    color: #cfd8ff; font-size: 13px; text-align: center; max-width: 260px; display: none; pointer-events: none;
+  }
+
+  #search-box {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000;
+    width: 220px; max-width: 60vw; padding: 8px 12px; border-radius: 20px; border: 1px solid #ddd;
+    font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); display: none; background: #fff;
+  }
+
+  .leaflet-cluster-badge {
+    background: #2d6cdf; color: #fff; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 12px; font-weight: 600; width: 100%; height: 100%;
   }
 </style>
 </head>
 <body>
+
+<div id="loading-overlay">
+  <div id="loading-spinner"></div>
+  <div>載入旅遊資料中...</div>
+</div>
 
 <div id="status-banner"></div>
 <div id="auth-box">
@@ -128,8 +173,11 @@
 </div>
 <div id="edit-hint">你有編輯權限：點地圖空白處新增地點，點標記可編輯</div>
 <button id="back-to-globe-btn">🌍 返回地球</button>
+<input type="text" id="search-box" placeholder="搜尋地點、城市、分類...">
 
 <div id="globe-view"></div>
+<div id="globe-stats"></div>
+<div id="globe-empty-state">目前還沒有任何地點資料<br>登入後點地圖空白處即可新增第一筆</div>
 <div id="globe-hint">拖曳旋轉地球，點擊光點飛入城市</div>
 <button id="globe-toggle-arcs">顯示路線弧線</button>
 
@@ -210,6 +258,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
@@ -220,13 +269,12 @@
 // 換成你自己的 Firebase 設定值
 // ============================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyBJrzfKELirwjVRrLqV4x0XXuD0VNxD01k",
+  apiKey: "填入你的 apiKey",
   authDomain: "johnny-journey.firebaseapp.com",
   projectId: "johnny-journey",
-  storageBucket: "johnny-journey.firebasestorage.app",
-  messagingSenderId: "269304525454",
-  appId: "1:269304525454:web:459e24ac8015fe32038fdf",
-  measurementId: "G-CBPVVLXL7J"
+  storageBucket: "johnny-journey.appspot.com",
+  messagingSenderId: "填入你的 messagingSenderId",
+  appId: "填入你的 appId"
 };
 
 // Cloudinary 免費方案設定（不需要 Firebase Storage / 不需要信用卡）
@@ -234,8 +282,8 @@ const firebaseConfig = {
 // 1. Dashboard 首頁可以看到 "Cloud name"，填到下面
 // 2. Settings → Upload → Upload presets → Add upload preset
 //    Signing Mode 選 "Unsigned"，存檔後把 preset 名稱填到下面
-const CLOUDINARY_CLOUD_NAME = "ramyh4db";
-const CLOUDINARY_UPLOAD_PRESET = "Johnny-Journey";
+const CLOUDINARY_CLOUD_NAME = "填入你的 cloud name";
+const CLOUDINARY_UPLOAD_PRESET = "填入你的 unsigned upload preset 名稱";
 // ============================================================
 
 firebase.initializeApp(firebaseConfig);
@@ -248,6 +296,9 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
+
+const markerCluster = L.markerClusterGroup({ maxClusterRadius: 50 });
+map.addLayer(markerCluster);
 
 const OPTIONAL_TEXT_FIELDS = [
   { key: 'description', label: '心得' },
@@ -313,9 +364,11 @@ function buildPopupHTML(docId, data) {
 
 function renderMarker(docId, data) {
   if (typeof data.lat !== 'number' || typeof data.lng !== 'number') return;
-  if (markerById[docId]) map.removeLayer(markerById[docId]);
-  const marker = L.marker([data.lat, data.lng]).addTo(map);
+  if (markerById[docId]) markerCluster.removeLayer(markerById[docId]);
+  const marker = L.marker([data.lat, data.lng]);
   marker.bindPopup(buildPopupHTML(docId, data));
+  marker._locId = docId;
+  markerCluster.addLayer(marker);
   markerById[docId] = marker;
 }
 
@@ -361,6 +414,9 @@ function loadAll() {
     routesCache = {};
     routeSnap.forEach(doc => routesCache[doc.id] = doc.data());
 
+    markerCluster.clearLayers();
+    Object.keys(markerById).forEach(k => delete markerById[k]);
+
     locationsCache = {};
     const bounds = [];
     locSnap.forEach(doc => {
@@ -374,16 +430,39 @@ function loadAll() {
     refreshRouteSelectOptions();
     renderManagePanels();
     updateGlobeData();
+    hideLoadingOverlay();
 
     if (bounds.length > 0 && currentView === 'city') map.fitBounds(bounds, { padding: [40, 40] });
     if (locSnap.empty) showBanner('目前還沒有任何地點資料');
   }).catch(err => {
     console.error(err);
+    hideLoadingOverlay();
     showBanner('讀取資料失敗，請按 F12 查看主控台');
   });
 }
 
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
 loadAll();
+
+// ============================================================
+// 搜尋 / 篩選地點（僅在城市地圖顯示）
+// ============================================================
+const searchBox = document.getElementById('search-box');
+searchBox.addEventListener('input', () => {
+  const keyword = searchBox.value.trim().toLowerCase();
+  markerCluster.clearLayers();
+  Object.entries(locationsCache).forEach(([docId, data]) => {
+    const marker = markerById[docId];
+    if (!marker) return;
+    if (!keyword) { markerCluster.addLayer(marker); return; }
+    const haystack = [data.name, data.city, data.country, data.category].filter(Boolean).join(' ').toLowerCase();
+    if (haystack.includes(keyword)) markerCluster.addLayer(marker);
+  });
+});
 
 // ============================================================
 // 登入 / 權限
@@ -811,27 +890,54 @@ document.getElementById('add-route-btn').addEventListener('click', () => {
 // ============================================================
 let currentView = 'globe'; // 'globe' | 'city'
 let showArcs = false;
+let world = null;
+let globeAvailable = false;
 
 const globeEl = document.getElementById('globe-view');
-const world = Globe()(globeEl)
-  .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-  .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-  .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
-  .pointAltitude(0.012)
-  .pointRadius(0.45)
-  .pointColor(() => '#ff6b4a')
-  .pointLabel(d => `<div style="background:#fff;color:#222;padding:4px 8px;border-radius:4px;font-size:12px;">${escapeHTML(d.city)}（${d.count} 個地點）</div>`)
-  .onPointClick(flyToCity)
-  .arcColor('color')
-  .arcDashLength(0.4)
-  .arcDashGap(0.2)
-  .arcDashAnimateTime(2500)
-  .arcStroke(0.5)
-  .arcAltitude(0.25);
 
-world.pointOfView({ lat: 20, lng: 100, altitude: 2.4 });
-world.controls().autoRotate = true;
-world.controls().autoRotateSpeed = 0.4;
+function sizeGlobeToContainer() {
+  if (!world) return;
+  world.width(globeEl.clientWidth || window.innerWidth);
+  world.height(globeEl.clientHeight || window.innerHeight);
+}
+
+try {
+  world = Globe()(globeEl)
+    .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+    .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+    .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+    .pointAltitude(0.012)
+    .pointRadius(0.45)
+    .pointColor(() => '#ff6b4a')
+    .pointLabel(d => `<div style="background:#fff;color:#222;padding:4px 8px;border-radius:4px;font-size:12px;">${escapeHTML(d.city)}（${d.count} 個地點）</div>`)
+    .onPointClick(flyToCity)
+    .arcColor('color')
+    .arcDashLength(0.4)
+    .arcDashGap(0.2)
+    .arcDashAnimateTime(2500)
+    .arcStroke(0.5)
+    .arcAltitude(0.25);
+
+  // globe.gl 第一次量到的容器尺寸常常不準，明確指定一次＋視窗改變時重新指定，
+  // 這是「地球畫面偏移／跑到角落」最常見的原因
+  sizeGlobeToContainer();
+  world.pointOfView({ lat: 20, lng: 100, altitude: 2.4 });
+  world.controls().autoRotate = true;
+  world.controls().autoRotateSpeed = 0.4;
+  globeAvailable = true;
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      sizeGlobeToContainer();
+      if (currentView === 'city') map.invalidateSize();
+    }, 150);
+  });
+} catch (err) {
+  console.error('3D 地球初始化失敗（可能是裝置不支援 WebGL）：', err);
+  globeAvailable = false;
+}
 
 function cityAggregates() {
   const byCity = {};
@@ -870,10 +976,28 @@ function routeArcsData() {
 
 let lastCityAggregates = [];
 
+function updateGlobeStats() {
+  const statsEl = document.getElementById('globe-stats');
+  const totalLocations = Object.keys(locationsCache).length;
+  const cities = new Set();
+  const countries = new Set();
+  Object.values(locationsCache).forEach(d => {
+    if (d.city) cities.add(d.city);
+    if (d.country) countries.add(d.country);
+  });
+  statsEl.innerHTML = `<b>${totalLocations}</b> 個地點　<b>${cities.size}</b> 個城市　<b>${countries.size}</b> 個國家`;
+  statsEl.style.display = (currentView === 'globe' && totalLocations > 0) ? 'block' : 'none';
+}
+
 function updateGlobeData() {
+  if (!globeAvailable) return;
   lastCityAggregates = cityAggregates();
   world.pointsData(lastCityAggregates);
   if (showArcs) world.arcsData(routeArcsData());
+  updateGlobeStats();
+
+  const emptyStateEl = document.getElementById('globe-empty-state');
+  emptyStateEl.style.display = (currentView === 'globe' && lastCityAggregates.length === 0) ? 'block' : 'none';
 }
 
 function flyToCity(pt) {
@@ -887,10 +1011,13 @@ function switchToCityView(pt) {
   globeEl.style.display = 'none';
   document.getElementById('globe-hint').style.display = 'none';
   document.getElementById('globe-toggle-arcs').style.display = 'none';
+  document.getElementById('globe-stats').style.display = 'none';
+  document.getElementById('globe-empty-state').style.display = 'none';
   document.getElementById('map').style.display = 'block';
   document.getElementById('back-to-globe-btn').style.display = 'inline-block';
+  document.getElementById('search-box').style.display = 'block';
   document.getElementById('edit-hint').style.display = isEditor ? 'block' : 'none';
-  world.pauseAnimation && world.pauseAnimation();
+  if (world && world.pauseAnimation) world.pauseAnimation();
 
   setTimeout(() => {
     map.invalidateSize();
@@ -909,12 +1036,16 @@ function switchToGlobeView() {
   currentView = 'globe';
   document.getElementById('map').style.display = 'none';
   document.getElementById('back-to-globe-btn').style.display = 'none';
+  document.getElementById('search-box').style.display = 'none';
   document.getElementById('edit-hint').style.display = 'none';
   globeEl.style.display = 'block';
   document.getElementById('globe-hint').style.display = 'block';
   document.getElementById('globe-toggle-arcs').style.display = 'inline-block';
-  world.resumeAnimation && world.resumeAnimation();
+  sizeGlobeToContainer();
+  if (world && world.resumeAnimation) world.resumeAnimation();
   world.controls().autoRotate = true;
+  updateGlobeStats();
+  updateGlobeData();
 }
 
 document.getElementById('back-to-globe-btn').addEventListener('click', switchToGlobeView);
@@ -925,6 +1056,15 @@ document.getElementById('globe-toggle-arcs').addEventListener('click', (e) => {
   e.target.textContent = showArcs ? '隱藏路線弧線' : '顯示路線弧線';
   world.arcsData(showArcs ? routeArcsData() : []);
 });
+
+// 裝置不支援 3D 地球（沒有 WebGL）時，直接進城市地圖，並隱藏地球相關按鈕
+if (!globeAvailable) {
+  document.getElementById('globe-hint').style.display = 'none';
+  document.getElementById('globe-toggle-arcs').style.display = 'none';
+  document.getElementById('globe-empty-state').style.display = 'none';
+  showBanner('這個裝置不支援 3D 地球效果，已切換為城市地圖模式');
+  switchToCityView(null);
+}
 </script>
 </body>
 </html>
