@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <title>我的旅遊地圖</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
-  #map { height: 100vh; width: 100%; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; overflow: hidden; }
+  #map { height: 100vh; width: 100%; display: none; }
+  #globe-view { height: 100vh; width: 100%; background: #000714; }
 
   .popup-photo { width: 100%; height: 120px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; }
   .popup-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; color: #222; }
@@ -25,7 +26,7 @@
   #status-banner {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
     background: #fff3cd; border: 1px solid #ffe58f; color: #856404;
-    padding: 8px 16px; border-radius: 6px; font-size: 13px; z-index: 1000; display: none;
+    padding: 8px 16px; border-radius: 6px; font-size: 13px; z-index: 2500; display: none; max-width: 90%; text-align: center;
   }
 
   #auth-box {
@@ -44,6 +45,23 @@
     padding: 6px 12px; border-radius: 6px; font-size: 12px; display: none; max-width: 220px;
   }
 
+  #back-to-globe-btn {
+    position: absolute; top: 12px; left: 12px; z-index: 1000;
+    background: #fff; color: #222; border: none; padding: 8px 14px; border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 13px; cursor: pointer; display: none;
+  }
+
+  #globe-hint {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 1000;
+    color: #cfd8ff; font-size: 12px; background: rgba(0,0,0,0.35); padding: 6px 14px; border-radius: 20px;
+  }
+  #globe-toggle-arcs {
+    position: absolute; bottom: 16px; right: 16px; z-index: 1000;
+    background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.4);
+    padding: 6px 12px; border-radius: 20px; font-size: 12px; cursor: pointer;
+  }
+  #globe-toggle-arcs.active { background: #2d6cdf; border-color: #2d6cdf; }
+
   .modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000;
     display: none; align-items: center; justify-content: center;
@@ -56,11 +74,15 @@
     width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px;
   }
   .form-group textarea { resize: vertical; min-height: 50px; }
-  .form-actions { display: flex; justify-content: space-between; margin-top: 14px; }
+  .form-actions { display: flex; justify-content: space-between; margin-top: 14px; flex-wrap: wrap; gap: 8px; }
   .btn { padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; }
   .btn-primary { background: #2d6cdf; color: #fff; }
   .btn-secondary { background: #eee; color: #333; }
   .btn-danger { background: #d9534f; color: #fff; }
+
+  #photo-preview-wrap { display: none; margin-top: 6px; }
+  #photo-preview { width: 100%; max-height: 130px; object-fit: cover; border-radius: 6px; }
+  #upload-progress { font-size: 11px; color: #2d6cdf; margin-top: 4px; }
 
   .tab-bar { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid #eee; }
   .tab-btn { flex: 1; padding: 8px; background: none; border: none; cursor: pointer; font-size: 13px; color: #888; border-bottom: 2px solid transparent; }
@@ -68,13 +90,31 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
-  .list-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-  .color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
-  .small-btn { padding: 3px 8px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; background: #eee; }
+  .list-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; gap: 6px; }
+  .color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; flex-shrink: 0; }
+  .small-btn { padding: 3px 8px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; background: #eee; white-space: nowrap; }
   .small-btn.danger { background: #f8d7da; color: #a33; }
+  .small-btn.primary { background: #dde8fc; color: #2d6cdf; }
   .inline-form { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
   .inline-form input[type=text] { flex: 1; min-width: 120px; padding: 6px 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 13px; }
   .inline-form input[type=color] { width: 36px; height: 32px; border: none; padding: 0; }
+
+  .route-detail { margin: 4px 0 12px 0; padding: 6px 8px; background: #f7f8fa; border-radius: 6px; }
+  .stop-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 4px; background: #fff; border: 1px solid #e5e5e5;
+    border-radius: 5px; margin-bottom: 4px; font-size: 12px; cursor: grab;
+  }
+  .stop-item.dragging { opacity: 0.4; }
+  .stop-order { font-weight: 700; color: #2d6cdf; width: 18px; text-align: center; flex-shrink: 0; }
+  .stop-name { flex: 1; }
+  .drag-handle { color: #bbb; font-size: 14px; flex-shrink: 0; }
+
+  @media (max-width: 480px) {
+    #auth-box { max-width: 200px; font-size: 12px; padding: 6px 8px; }
+    #edit-hint { max-width: 170px; font-size: 11px; top: 58px; }
+    .modal-box { padding: 14px; width: 94%; }
+    #globe-hint { font-size: 11px; padding: 5px 10px; }
+  }
 </style>
 </head>
 <body>
@@ -87,6 +127,12 @@
   <button id="manage-btn">管理</button>
 </div>
 <div id="edit-hint">你有編輯權限：點地圖空白處新增地點，點標記可編輯</div>
+<button id="back-to-globe-btn">🌍 返回地球</button>
+
+<div id="globe-view"></div>
+<div id="globe-hint">拖曳旋轉地球，點擊光點飛入城市</div>
+<button id="globe-toggle-arcs">顯示路線弧線</button>
+
 <div id="map"></div>
 
 <!-- 新增/編輯地點 -->
@@ -98,7 +144,13 @@
       <div class="form-group"><label>分類 *</label><input type="text" id="f-category" placeholder="景點／美食／住宿" required></div>
       <div class="form-group"><label>國家 *</label><input type="text" id="f-country" required></div>
       <div class="form-group"><label>城市 *</label><input type="text" id="f-city" required></div>
-      <div class="form-group"><label>照片網址（選填，貼上 Google 相簿公開連結）</label><input type="text" id="f-photoUrl" placeholder="https://..."></div>
+      <div class="form-group">
+        <label>照片（選填，上傳圖片或貼上網址）</label>
+        <input type="file" id="f-photoFile" accept="image/*">
+        <input type="text" id="f-photoUrl" placeholder="https://..." style="margin-top:4px;">
+        <div id="photo-preview-wrap"><img id="photo-preview" src=""></div>
+        <div id="upload-progress"></div>
+      </div>
       <div class="form-group"><label>推薦指數（1-5，選填）</label><input type="number" id="f-rating" min="1" max="5" step="1"></div>
       <div class="form-group"><label>心得（選填）</label><textarea id="f-description"></textarea></div>
       <div class="form-group"><label>優惠資訊（選填）</label><input type="text" id="f-discount"></div>
@@ -116,7 +168,7 @@
         <div><button type="button" id="delete-btn" class="btn btn-danger" style="display:none;">刪除</button></div>
         <div>
           <button type="button" id="cancel-btn" class="btn btn-secondary">取消</button>
-          <button type="submit" class="btn btn-primary">儲存</button>
+          <button type="submit" class="btn btn-primary" id="save-btn">儲存</button>
         </div>
       </div>
     </form>
@@ -161,19 +213,29 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://unpkg.com/globe.gl"></script>
 
 <script>
 // ============================================================
 // 換成你自己的 Firebase 設定值
 // ============================================================
 const firebaseConfig = {
-  apiKey: "填入你的 apiKey",
+  apiKey: "AIzaSyBJrzfKELirwjVRrLqV4x0XXuD0VNxD01k",
   authDomain: "johnny-journey.firebaseapp.com",
   projectId: "johnny-journey",
-  storageBucket: "johnny-journey.appspot.com",
-  messagingSenderId: "填入你的 messagingSenderId",
-  appId: "填入你的 appId"
+  storageBucket: "johnny-journey.firebasestorage.app",
+  messagingSenderId: "269304525454",
+  appId: "1:269304525454:web:459e24ac8015fe32038fdf",
+  measurementId: "G-CBPVVLXL7J"
 };
+
+// Cloudinary 免費方案設定（不需要 Firebase Storage / 不需要信用卡）
+// 去 https://cloudinary.com 註冊免費帳號後：
+// 1. Dashboard 首頁可以看到 "Cloud name"，填到下面
+// 2. Settings → Upload → Upload presets → Add upload preset
+//    Signing Mode 選 "Unsigned"，存檔後把 preset 名稱填到下面
+const CLOUDINARY_CLOUD_NAME = "ramyh4db";
+const CLOUDINARY_UPLOAD_PRESET = "Johnny-Journey";
 // ============================================================
 
 firebase.initializeApp(firebaseConfig);
@@ -181,7 +243,7 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
 
-const map = L.map('map').setView([25.0, 121.5], 4);
+const map = L.map('map', { zoomControl: true }).setView([25.0, 121.5], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '&copy; OpenStreetMap contributors'
@@ -311,8 +373,9 @@ function loadAll() {
     renderRouteLines();
     refreshRouteSelectOptions();
     renderManagePanels();
+    updateGlobeData();
 
-    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+    if (bounds.length > 0 && currentView === 'city') map.fitBounds(bounds, { padding: [40, 40] });
     if (locSnap.empty) showBanner('目前還沒有任何地點資料');
   }).catch(err => {
     console.error(err);
@@ -364,7 +427,7 @@ auth.onAuthStateChanged(async (user) => {
     document.getElementById('logout-btn').style.display = 'none';
   }
 
-  document.getElementById('edit-hint').style.display = isEditor ? 'block' : 'none';
+  document.getElementById('edit-hint').style.display = (isEditor && currentView === 'city') ? 'block' : 'none';
   document.getElementById('manage-btn').style.display = isEditor ? 'inline-block' : 'none';
   document.getElementById('owner-only-editor-form').style.display = isOwner ? 'flex' : 'none';
   document.getElementById('not-owner-hint').style.display = isOwner ? 'none' : 'block';
@@ -380,14 +443,32 @@ map.on('click', (e) => {
 });
 
 // ============================================================
-// 新增／編輯地點視窗
+// 新增／編輯地點視窗（含 Firebase Storage 圖片上傳）
 // ============================================================
 const locOverlay = document.getElementById('location-modal-overlay');
 const form = document.getElementById('edit-form');
+const photoFileInput = document.getElementById('f-photoFile');
+const photoUrlInput = document.getElementById('f-photoUrl');
+const photoPreviewWrap = document.getElementById('photo-preview-wrap');
+const photoPreview = document.getElementById('photo-preview');
+const uploadProgressEl = document.getElementById('upload-progress');
+
+photoFileInput.addEventListener('change', () => {
+  const file = photoFileInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    photoPreview.src = reader.result;
+    photoPreviewWrap.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+});
 
 function openModalForCreate() {
   document.getElementById('modal-title').textContent = '新增地點';
   form.reset();
+  photoPreviewWrap.style.display = 'none';
+  uploadProgressEl.textContent = '';
   document.getElementById('delete-btn').style.display = 'none';
   refreshRouteSelectOptions();
   locOverlay.style.display = 'flex';
@@ -403,7 +484,15 @@ window.openEditModal = function(docId) {
   document.getElementById('f-category').value = data.category || '';
   document.getElementById('f-country').value = data.country || '';
   document.getElementById('f-city').value = data.city || '';
-  document.getElementById('f-photoUrl').value = data.photoUrl || '';
+  photoFileInput.value = '';
+  photoUrlInput.value = data.photoUrl || '';
+  if (data.photoUrl) {
+    photoPreview.src = data.photoUrl;
+    photoPreviewWrap.style.display = 'block';
+  } else {
+    photoPreviewWrap.style.display = 'none';
+  }
+  uploadProgressEl.textContent = '';
   document.getElementById('f-rating').value = data.rating || '';
   document.getElementById('f-description').value = data.description || '';
   document.getElementById('f-discount').value = data.discount || '';
@@ -431,50 +520,106 @@ document.getElementById('delete-btn').addEventListener('click', () => {
   }).catch(err => showBanner('刪除失敗：' + err.message));
 });
 
+// 若使用者選了檔案，上傳到 Cloudinary（免費、不需要信用卡），取得網址後再回傳
+// 沒選檔案就直接用手動貼上的網址
+function uploadPhotoIfNeeded() {
+  const file = photoFileInput.files[0];
+  if (!file) return Promise.resolve(photoUrlInput.value.trim() || null);
+
+  const saveBtn = document.getElementById('save-btn');
+  saveBtn.disabled = true;
+  uploadProgressEl.textContent = '上傳中... 0%';
+
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        uploadProgressEl.textContent = `上傳中... ${pct}%`;
+      }
+    };
+
+    xhr.onload = () => {
+      saveBtn.disabled = false;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          uploadProgressEl.textContent = '上傳完成';
+          resolve(data.secure_url);
+        } catch (err) {
+          uploadProgressEl.textContent = '';
+          reject(new Error('Cloudinary 回應解析失敗'));
+        }
+      } else {
+        uploadProgressEl.textContent = '';
+        reject(new Error('Cloudinary 上傳失敗（請確認 cloud name 與 upload preset 是否正確、preset 是否為 Unsigned）'));
+      }
+    };
+
+    xhr.onerror = () => {
+      saveBtn.disabled = false;
+      uploadProgressEl.textContent = '';
+      reject(new Error('網路錯誤，上傳失敗'));
+    };
+
+    xhr.send(formData);
+  });
+}
+
 form.addEventListener('submit', (e) => {
   e.preventDefault();
 
-  const payload = {
-    name: document.getElementById('f-name').value.trim(),
-    category: document.getElementById('f-category').value.trim(),
-    country: document.getElementById('f-country').value.trim(),
-    city: document.getElementById('f-city').value.trim(),
-  };
+  uploadPhotoIfNeeded().then((photoUrl) => {
+    const payload = {
+      name: document.getElementById('f-name').value.trim(),
+      category: document.getElementById('f-category').value.trim(),
+      country: document.getElementById('f-country').value.trim(),
+      city: document.getElementById('f-city').value.trim(),
+    };
 
-  const optionalTextFields = ['photoUrl', 'description', 'discount', 'price', 'hours', 'bestTime', 'transport', 'website'];
-  optionalTextFields.forEach(key => {
-    const value = document.getElementById('f-' + key).value.trim();
-    if (value) payload[key] = value;
-  });
+    if (photoUrl) payload.photoUrl = photoUrl;
 
-  const ratingValue = document.getElementById('f-rating').value;
-  if (ratingValue) payload.rating = Number(ratingValue);
+    const optionalTextFields = ['description', 'discount', 'price', 'hours', 'bestTime', 'transport', 'website'];
+    optionalTextFields.forEach(key => {
+      const value = document.getElementById('f-' + key).value.trim();
+      if (value) payload[key] = value;
+    });
 
-  const routeIdValue = document.getElementById('f-routeId').value;
-  if (routeIdValue) payload.routeId = routeIdValue;
+    const ratingValue = document.getElementById('f-rating').value;
+    if (ratingValue) payload.rating = Number(ratingValue);
 
-  const orderValue = document.getElementById('f-order').value;
-  if (orderValue !== '') payload.order = Number(orderValue);
+    const routeIdValue = document.getElementById('f-routeId').value;
+    if (routeIdValue) payload.routeId = routeIdValue;
 
-  payload.createdBy = currentUser.email;
-  payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+    const orderValue = document.getElementById('f-order').value;
+    if (orderValue !== '') payload.order = Number(orderValue);
 
-  if (editingDocId) {
-    db.collection('locations').doc(editingDocId).set(payload, { merge: true }).then(() => {
-      locOverlay.style.display = 'none';
-      showBanner('已更新');
-      loadAll();
-    }).catch(err => showBanner('儲存失敗：' + err.message));
-  } else {
-    payload.lat = pendingLatLng.lat;
-    payload.lng = pendingLatLng.lng;
-    payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-    db.collection('locations').add(payload).then(() => {
-      locOverlay.style.display = 'none';
-      showBanner('已新增');
-      loadAll();
-    }).catch(err => showBanner('新增失敗：' + err.message));
-  }
+    payload.createdBy = currentUser.email;
+    payload.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    if (editingDocId) {
+      return db.collection('locations').doc(editingDocId).set(payload, { merge: true }).then(() => {
+        locOverlay.style.display = 'none';
+        showBanner('已更新');
+        loadAll();
+      });
+    } else {
+      payload.lat = pendingLatLng.lat;
+      payload.lng = pendingLatLng.lng;
+      payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      return db.collection('locations').add(payload).then(() => {
+        locOverlay.style.display = 'none';
+        showBanner('已新增');
+        loadAll();
+      });
+    }
+  }).catch(err => showBanner('儲存失敗：' + err.message));
 });
 
 // ============================================================
@@ -529,12 +674,33 @@ function renderManagePanels() {
     }).catch(() => { editorsListEl.textContent = '無法讀取協作者名單'; });
   }
 
+  renderRoutesManageList();
+}
+
+// 路線清單 + 可展開的「拖曳調整站序」子清單
+let expandedRouteId = null;
+
+function renderRoutesManageList() {
   const routesListEl = document.getElementById('routes-list');
   routesListEl.innerHTML = '';
   Object.entries(routesCache).forEach(([id, data]) => {
     const row = document.createElement('div');
     row.className = 'list-item';
     row.innerHTML = `<span><span class="color-dot" style="background:${escapeHTML(data.color || '#888')}"></span>${escapeHTML(data.name)}</span>`;
+
+    const btnGroup = document.createElement('div');
+    btnGroup.style.display = 'flex';
+    btnGroup.style.gap = '4px';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'small-btn primary';
+    toggleBtn.textContent = expandedRouteId === id ? '收起站序' : '調整站序';
+    toggleBtn.onclick = () => {
+      expandedRouteId = (expandedRouteId === id) ? null : id;
+      renderRoutesManageList();
+    };
+    btnGroup.appendChild(toggleBtn);
+
     if (isEditor) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'small-btn danger';
@@ -546,10 +712,67 @@ function renderManagePanels() {
           loadAll();
         });
       };
-      row.appendChild(removeBtn);
+      btnGroup.appendChild(removeBtn);
     }
+    row.appendChild(btnGroup);
     routesListEl.appendChild(row);
+
+    if (expandedRouteId === id) {
+      routesListEl.appendChild(buildRouteStopDragList(id));
+    }
   });
+}
+
+function buildRouteStopDragList(routeId) {
+  const wrap = document.createElement('div');
+  wrap.className = 'route-detail';
+
+  const stops = Object.entries(locationsCache)
+    .filter(([, d]) => d.routeId === routeId)
+    .sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
+
+  if (stops.length === 0) {
+    wrap.innerHTML = '<div style="font-size:12px;color:#999;">這條路線還沒有任何地點</div>';
+    return wrap;
+  }
+
+  let dragFromIndex = null;
+
+  stops.forEach(([docId, data], idx) => {
+    const item = document.createElement('div');
+    item.className = 'stop-item';
+    item.draggable = isEditor;
+    item.dataset.index = idx;
+    item.innerHTML = `<span class="drag-handle">⠿</span><span class="stop-order">${idx + 1}</span><span class="stop-name">${escapeHTML(data.name)}</span>`;
+
+    item.addEventListener('dragstart', () => {
+      dragFromIndex = idx;
+      item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => item.classList.remove('dragging'));
+    item.addEventListener('dragover', (e) => e.preventDefault());
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const dragToIndex = idx;
+      if (dragFromIndex === null || dragFromIndex === dragToIndex) return;
+      const reordered = stops.map(s => s);
+      const [moved] = reordered.splice(dragFromIndex, 1);
+      reordered.splice(dragToIndex, 0, moved);
+
+      const batch = db.batch();
+      reordered.forEach(([docId2], newIdx) => {
+        batch.update(db.collection('locations').doc(docId2), { order: newIdx + 1 });
+      });
+      batch.commit().then(() => {
+        showBanner('已更新站序');
+        loadAll();
+      }).catch(err => showBanner('更新站序失敗：' + err.message));
+    });
+
+    wrap.appendChild(item);
+  });
+
+  return wrap;
 }
 
 document.getElementById('add-editor-btn').addEventListener('click', () => {
@@ -581,6 +804,126 @@ document.getElementById('add-route-btn').addEventListener('click', () => {
     showBanner('已新增路線');
     loadAll();
   }).catch(err => showBanner('新增失敗：' + err.message));
+});
+
+// ============================================================
+// Phase 6：3D 地球總覽層
+// ============================================================
+let currentView = 'globe'; // 'globe' | 'city'
+let showArcs = false;
+
+const globeEl = document.getElementById('globe-view');
+const world = Globe()(globeEl)
+  .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+  .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+  .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+  .pointAltitude(0.012)
+  .pointRadius(0.45)
+  .pointColor(() => '#ff6b4a')
+  .pointLabel(d => `<div style="background:#fff;color:#222;padding:4px 8px;border-radius:4px;font-size:12px;">${escapeHTML(d.city)}（${d.count} 個地點）</div>`)
+  .onPointClick(flyToCity)
+  .arcColor('color')
+  .arcDashLength(0.4)
+  .arcDashGap(0.2)
+  .arcDashAnimateTime(2500)
+  .arcStroke(0.5)
+  .arcAltitude(0.25);
+
+world.pointOfView({ lat: 20, lng: 100, altitude: 2.4 });
+world.controls().autoRotate = true;
+world.controls().autoRotateSpeed = 0.4;
+
+function cityAggregates() {
+  const byCity = {};
+  Object.values(locationsCache).forEach(data => {
+    if (typeof data.lat !== 'number' || typeof data.lng !== 'number') return;
+    const key = `${data.country || ''}||${data.city || '未知城市'}`;
+    if (!byCity[key]) byCity[key] = { city: data.city || '未知城市', country: data.country || '', lat: 0, lng: 0, count: 0 };
+    byCity[key].lat += data.lat;
+    byCity[key].lng += data.lng;
+    byCity[key].count += 1;
+  });
+  return Object.values(byCity).map(c => ({ ...c, lat: c.lat / c.count, lng: c.lng / c.count }));
+}
+
+function routeArcsData() {
+  const arcs = [];
+  const byRoute = {};
+  Object.values(locationsCache).forEach(data => {
+    if (!data.routeId || typeof data.lat !== 'number' || typeof data.lng !== 'number') return;
+    if (!byRoute[data.routeId]) byRoute[data.routeId] = [];
+    byRoute[data.routeId].push(data);
+  });
+  Object.entries(byRoute).forEach(([routeId, points]) => {
+    points.sort((a, b) => (a.order || 0) - (b.order || 0));
+    const color = (routesCache[routeId] && routesCache[routeId].color) || '#2d6cdf';
+    for (let i = 0; i < points.length - 1; i++) {
+      arcs.push({
+        startLat: points[i].lat, startLng: points[i].lng,
+        endLat: points[i + 1].lat, endLng: points[i + 1].lng,
+        color
+      });
+    }
+  });
+  return arcs;
+}
+
+let lastCityAggregates = [];
+
+function updateGlobeData() {
+  lastCityAggregates = cityAggregates();
+  world.pointsData(lastCityAggregates);
+  if (showArcs) world.arcsData(routeArcsData());
+}
+
+function flyToCity(pt) {
+  world.controls().autoRotate = false;
+  world.pointOfView({ lat: pt.lat, lng: pt.lng, altitude: 0.28 }, 1500);
+  setTimeout(() => switchToCityView(pt), 1650);
+}
+
+function switchToCityView(pt) {
+  currentView = 'city';
+  globeEl.style.display = 'none';
+  document.getElementById('globe-hint').style.display = 'none';
+  document.getElementById('globe-toggle-arcs').style.display = 'none';
+  document.getElementById('map').style.display = 'block';
+  document.getElementById('back-to-globe-btn').style.display = 'inline-block';
+  document.getElementById('edit-hint').style.display = isEditor ? 'block' : 'none';
+  world.pauseAnimation && world.pauseAnimation();
+
+  setTimeout(() => {
+    map.invalidateSize();
+    if (pt) {
+      map.setView([pt.lat, pt.lng], 12);
+    } else {
+      const bounds = Object.values(locationsCache)
+        .filter(d => typeof d.lat === 'number' && typeof d.lng === 'number')
+        .map(d => [d.lat, d.lng]);
+      if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+    }
+  }, 50);
+}
+
+function switchToGlobeView() {
+  currentView = 'globe';
+  document.getElementById('map').style.display = 'none';
+  document.getElementById('back-to-globe-btn').style.display = 'none';
+  document.getElementById('edit-hint').style.display = 'none';
+  globeEl.style.display = 'block';
+  document.getElementById('globe-hint').style.display = 'block';
+  document.getElementById('globe-toggle-arcs').style.display = 'inline-block';
+  world.resumeAnimation && world.resumeAnimation();
+  world.controls().autoRotate = true;
+}
+
+document.getElementById('back-to-globe-btn').addEventListener('click', switchToGlobeView);
+
+document.getElementById('globe-toggle-arcs').addEventListener('click', (e) => {
+  showArcs = !showArcs;
+  e.target.classList.toggle('active', showArcs);
+  e.target.textContent = showArcs ? '隱藏路線弧線' : '顯示路線弧線';
+  world.arcsData(showArcs ? routeArcsData() : []);
 });
 </script>
 </body>
